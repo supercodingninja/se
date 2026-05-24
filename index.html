@@ -3,165 +3,191 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spanish Audio to English Text</title>
+    <title>Real-Time Spanish to English Translator</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 50px auto;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 700px;
+            margin: 40px auto;
             padding: 20px;
+            background-color: #f9f9fb;
+            color: #333;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.05);
             text-align: center;
         }
         button {
-            font-size: 18px;
-            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            padding: 12px 28px;
             margin: 10px;
             cursor: pointer;
-            border-radius: 50px;
-            border: none;
-        }
-        #recordBtn { background-color: #ff4d4d; color: white; }
-        #stopBtn { background-color: #333; color: white; }
-        #stopBtn:disabled { background-color: #ccc; }
-        #output {
-            margin-top: 30px;
-            padding: 20px;
-            background: #f4f4f4;
             border-radius: 8px;
-            min-height: 100px;
+            border: none;
+            transition: background 0.2s;
+        }
+        #startBtn { background-color: #007bff; color: white; }
+        #startBtn:hover { background-color: #0056b3; }
+        #stopBtn { background-color: #dc3545; color: white; }
+        #stopBtn:hover { background-color: #bd2130; }
+        button:disabled { background-color: #cccccc !important; cursor: not-allowed; }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
             text-align: left;
+        }
+        .box {
+            padding: 15px;
+            background: #f1f3f5;
+            border-radius: 8px;
+            min-height: 150px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+        .status {
+            font-weight: bold;
+            color: #28a745;
+            margin-top: 10px;
         }
     </style>
 </head>
 <body>
 
-    <h1>Spanish to English Audio Translator</h1>
-    <p>Click record and speak Spanish. The app will translate it to English text.</p>
+<div class="container">
+    <h2>⚡ Real-Time Spanish ➔ English Translator</h2>
+    <p>Click start and speak Spanish continuously. The text will translate instantly.</p>
 
-    <button id="recordBtn">🎤 Start Recording</button>
-    <button id="stopBtn" disabled>⏹️ Stop</button>
+    <button id="startBtn">▶️ Start Live Translation</button>
+    <button id="stopBtn" disabled>⏸️ Stop</button>
+    
+    <div id="statusText" class="status"></div>
 
-    <h3>Translated English Text:</h3>
-    <div id="output">Your translation will appear here...</div>
+    <div class="grid">
+        <div>
+            <h3>Live Spanish (Speech)</h3>
+            <div id="spanishOutput" class="box">Waiting for speech...</div>
+        </div>
+        <div>
+            <h3>Live English (Translation)</h3>
+            <div id="englishOutput" class="box">Translation will appear here...</div>
+        </div>
+    </div>
+</div>
 
-    <script>
-        // Replace with your actual Google Cloud API Key
-        const API_KEY = 'YOUR_GOOGLE_CLOUD_API_KEY'; 
+<script>
+    // ⚠️ REPLACE WITH YOUR GOOGLE CLOUD TRANSLATION API KEY
+    const GOOGLE_API_KEY = 'YOUR_GOOGLE_CLOUD_API_KEY';
+
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const spanishOutput = document.getElementById('spanishOutput');
+    const englishOutput = document.getElementById('englishOutput');
+    const statusText = document.getElementById('statusText');
+
+    // Initialize the browser's native Speech Recognition
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+        alert("Your browser does not support Web Speech API. Please use Google Chrome or Microsoft Edge.");
+    }
+
+    const recognition = new SpeechRecognition();
+    
+    // Crucial configurations for Real-Time streaming:
+    recognition.continuous = true;       // Keeps listening even if the speaker pauses
+    recognition.interimResults = true;   // Provides text immediately before the sentence finishes
+    recognition.lang = 'es-ES';          // Sets input language to Spanish
+
+    let finalSpanishTranscript = '';
+
+    startBtn.addEventListener('click', () => {
+        finalSpanishTranscript = '';
+        spanishOutput.innerText = '';
+        englishOutput.innerText = '';
+        statusText.innerText = "🎤 Microphone active. Speak Spanish now...";
         
-        let mediaRecorder;
-        let audioChunks = [];
+        recognition.start();
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+    });
 
-        const recordBtn = document.getElementById('recordBtn');
-        const stopBtn = document.getElementById('stopBtn');
-        const outputDiv = document.getElementById('output');
+    stopBtn.addEventListener('click', () => {
+        recognition.stop();
+        statusText.innerText = "🛑 Stopped listening.";
+        startBtn.disabled = false;
+        stopBtn.disabled = true;
+    });
 
-        recordBtn.addEventListener('click', async () => {
-            audioChunks = [];
-            outputDiv.innerText = "Listening...";
-            
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-                mediaRecorder = new MediaRecorder(stream);
-                
-                mediaRecorder.ondataavailable = (event) => {
-                    audioChunks.push(event.data);
-                };
-
-                mediaRecorder.onstop = async () => {
-                    outputDiv.innerText = "Translating...";
-                    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-                    const base64Audio = await blobToBase64(audioBlob);
-                    sendToTranslationAPI(base64Audio);
-                };
-
-                mediaRecorder.start();
-                recordBtn.disabled = true;
-                stopBtn.disabled = false;
-            } catch (err) {
-                outputDiv.innerText = "Error accessing microphone: " + err.message;
+    // Triggers continuously as the user speaks
+    recognition.onresult = async (event) => {
+        let interimTranscript = '';
+        
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+                finalSpanishTranscript += event.results[i][0].transcript + ' ';
+            } else {
+                interimTranscript += event.results[i][0].transcript;
             }
-        });
+        }
 
-        stopBtn.addEventListener('click', () => {
-            mediaRecorder.stop();
-            recordBtn.disabled = false;
-            stopBtn.disabled = true;
-        });
+        // Combine permanent text with real-time guessing text
+        const currentSpanishText = finalSpanishTranscript + interimTranscript;
+        
+        // Update the Spanish UI pane instantly
+        spanishOutput.innerText = currentSpanishText;
 
-        // Helper function to convert audio blob to Base64 for the API
-        function blobToBase64(blob) {
-            return new Promise((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                    const base64String = reader.result.split(',')[1];
-                    resolve(base64String);
-                };
-                reader.onerror = reject;
-                reader.readAsDataURL(blob);
+        // Only send to translation API if there is actual text to process
+        if (currentSpanishText.trim().length > 0) {
+            streamTranslateToEnglish(currentSpanishText);
+        }
+    };
+
+    recognition.onerror = (event) => {
+        statusText.style.color = '#dc3545';
+        statusText.innerText = "Error occurred: " + event.error;
+    };
+
+    recognition.onend = () => {
+        // Automatically restart if the button wasn't toggled off manually
+        if (startBtn.disabled) {
+            recognition.start();
+        }
+    };
+
+    // Makes a rapid POST request to Google Translate API
+    async function streamTranslateToEnglish(text) {
+        const url = `https://googleapis.com{GOOGLE_API_KEY}`;
+        
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                body: JSON.stringify({
+                    q: text,
+                    target: 'en',
+                    source: 'es'
+                }),
+                headers: { 'Content-Type': 'application/json' }
             });
-        }
-
-        // Sends the audio to Google Cloud Speech-to-Text with translation config
-        async function sendToTranslationAPI(base64Audio) {
-            const url = `https://googleapis.com{API_KEY}`;
             
-            const requestBody = {
-                config: {
-                    encoding: "WEBM_OPUS",
-                    sampleRateHertz: 48000,
-                    languageCode: "es-ES", // Detects Spanish audio
-                    alternativeLanguageCodes: ["en-US"] // Forces translation output context if supported, or use modern Cloud Translation API wrapper
-                },
-                audio: {
-                    content: base64Audio
-                }
-            };
-
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: JSON.stringify(requestBody),
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                const data = await response.json();
-                
-                if (data.results && data.results[0]) {
-                    const spanishText = data.results[0].alternatives[0].transcript;
-                    outputDiv.innerText = "Detected Spanish: " + spanishText + "\n\nTranslating text...";
-                    
-                    // Call text translation to finish the job
-                    translateText(spanishText);
-                } else {
-                    outputDiv.innerText = "Could not understand the audio.";
-                }
-            } catch (error) {
-                outputDiv.innerText = "API Error: " + error.message;
-            }
-        }
-
-        // Translates the transcribed Spanish text into English
-        async function translateText(text) {
-            const url = `https://googleapis.com{API_KEY}`;
+            const data = await response.json();
             
-            try {
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        q: text,
-                        target: 'en',
-                        source: 'es'
-                    }),
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                
-                const data = await response.json();
-                const englishTranslation = data.data.translations[0].translatedText;
-                outputDiv.innerText = englishTranslation;
-            } catch (error) {
-                outputDiv.innerText = "Translation Error: " + error.message;
+            if (data.data && data.data.translations) {
+                const translatedText = data.data.translations[0].translatedText;
+                // Update the English UI pane instantly
+                englishOutput.innerText = translatedText;
             }
+        } catch (error) {
+            console.error("Translation stream error:", error);
         }
-    </script>
+    }
+</script>
+
 </body>
 </html>
